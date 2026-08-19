@@ -17,7 +17,17 @@
             <span>卡带管理</span>
           </el-menu-item>
           <el-menu-item index="divider" :disabled="true" class="menu-divider"></el-menu-item>
-          <el-menu-item v-for="c in configs" :key="c.id" :index="String(c.id)">
+          <div class="cfg-search">
+            <el-input
+              v-model="searchQuery"
+              placeholder="搜索配置名称"
+              clearable
+              size="large"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+          </div>
+          <el-menu-item v-for="c in filteredConfigs" :key="c.id" :index="String(c.id)">
             <span class="cfg-name">{{ c.name }}</span>
           </el-menu-item>
         </el-menu>
@@ -26,6 +36,12 @@
         v-if="!configs.length"
         description="还没有配置"
         :image-size="60"
+        class="aside-empty"
+      />
+      <el-empty
+        v-else-if="!filteredConfigs.length"
+        description="没有匹配的配置"
+        :image-size="50"
         class="aside-empty"
       />
     </el-aside>
@@ -248,6 +264,7 @@
     :mode="cfgFormMode"
     :initial-data="cfgEditData"
     :cartridges="cartridges"
+    :history="configs"
     :saving="saving"
     @save="handleDialogSave"
     @cancel="handleDialogCancel"
@@ -258,6 +275,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { pinyin } from 'pinyin-pro'
 import GridDisplay from './components/GridDisplay.vue'
 import ConfigFormDialog from './components/ConfigFormDialog.vue'
 import {
@@ -276,6 +294,29 @@ const view = ref('empty')
 const saving = ref(false)
 const loading = ref(false)
 const detail = ref(null)
+
+// 侧边栏搜索：支持名称模糊匹配 + 拼音/首字母
+const searchQuery = ref('')
+const pyCache = new Map()
+function pinyinText(name) {
+  if (pyCache.has(name)) return pyCache.get(name)
+  const first = pinyin(name, { pattern: 'first', toneType: 'none', nonZh: 'consecutive' }).replace(/\s+/g, '').toLowerCase()
+  const full = pinyin(name, { toneType: 'none', nonZh: 'consecutive' }).replace(/\s+/g, '').toLowerCase()
+  const v = { first, full }
+  pyCache.set(name, v)
+  return v
+}
+function matchConfigName(name, q) {
+  if (!q) return true
+  if (name.toLowerCase().includes(q)) return true
+  const p = pinyinText(name)
+  return p.first.includes(q) || p.full.includes(q)
+}
+const filteredConfigs = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return configs.value
+  return configs.value.filter((c) => matchConfigName(c.name, q))
+})
 
 // 配置管理表单
 const cfgFormMode = ref('new')

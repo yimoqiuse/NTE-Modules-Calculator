@@ -25,7 +25,18 @@
         </el-form-item>
       </div>
       <el-form-item label="总模型形状">
-        <GridEditor v-model="form.grid" />
+        <div class="hist-nav">
+          <el-button circle :disabled="!historyItems.length" title="上一个历史形状" @click="stepHistory(-1)">
+            <el-icon><ArrowLeftBold /></el-icon>
+          </el-button>
+          <div class="hist-main">
+            <GridEditor v-model="form.grid" />
+            <div v-if="historyItems.length" class="hist-status">{{ histLabel }}</div>
+          </div>
+          <el-button circle :disabled="!historyItems.length" title="下一个历史形状" @click="stepHistory(1)">
+            <el-icon><ArrowRightBold /></el-icon>
+          </el-button>
+        </div>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -37,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed, onBeforeUnmount } from 'vue'
 import GridEditor from './GridEditor.vue'
 import { DEFAULT_EXAMPLE } from '../palette'
 
@@ -47,11 +58,50 @@ const props = defineProps({
   initialData: { type: Object, default: () => ({ name: '', grid: '', cartridgeId: 0 }) },
   cartridges: { type: Array, default: () => [] },
   saving: { type: Boolean, default: false },
+  history: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['update:visible', 'save', 'cancel', 'reset'])
 
 const form = ref({ name: '', grid: '', cartridgeId: 0 })
+
+// 历史形状 = 已有配置里的形状，按形状去重
+const historyItems = computed(() => {
+  const seen = new Set()
+  const out = []
+  for (const c of props.history || []) {
+    if (!c.grid || seen.has(c.grid)) continue
+    seen.add(c.grid)
+    out.push({ name: c.name, grid: c.grid })
+  }
+  return out
+})
+
+const curHist = computed(() => historyItems.value.findIndex((h) => h.grid === form.value.grid))
+
+const histLabel = computed(() => {
+  if (!historyItems.value.length) return ''
+  const i = curHist.value
+  return i === -1 ? '当前形状不在历史中（←/→ 切换）' : `历史形状 ${i + 1} / ${historyItems.value.length}`
+})
+
+function stepHistory(dir) {
+  const items = historyItems.value
+  if (!items.length) return
+  const cur = curHist.value
+  const next = cur === -1 ? (dir > 0 ? 0 : items.length - 1) : (cur + dir + items.length) % items.length
+  form.value.grid = items[next].grid
+  form.value.name = items[next].name
+}
+
+function onKeydown(e) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  const t = e.target
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  if (t instanceof Element && t.closest('.el-select-dropdown')) return
+  e.preventDefault()
+  stepHistory(e.key === 'ArrowLeft' ? -1 : 1)
+}
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -60,8 +110,13 @@ watch(() => props.visible, (val) => {
     } else {
       form.value = { name: '', grid: DEFAULT_EXAMPLE, cartridgeId: 0 }
     }
+    document.addEventListener('keydown', onKeydown)
+  } else {
+    document.removeEventListener('keydown', onKeydown)
   }
 })
+
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 
 function onSave() {
   emit('save', { ...form.value })
@@ -91,5 +146,26 @@ function onReset() {
 .cfg-top-item {
   flex: 1;
   min-width: 0;
+}
+
+.hist-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.hist-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hist-status {
+  margin-top: 6px;
+  color: #909399;
+  font-size: var(--fs-hint);
 }
 </style>
